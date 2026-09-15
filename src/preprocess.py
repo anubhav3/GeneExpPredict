@@ -5,13 +5,13 @@ import torch
 
 def load_data():
 
-    df_x = pd.read_csv("data/x_train.csv")
-    df_y = pd.read_csv("data/y_train.csv")
+    df_x = pd.read_csv("data/raw/x_train.csv")
+    df_y = pd.read_csv("data/raw/y_train.csv")
 
     return df_x, df_y
 
 
-def prepare_data(df_x, df_y):
+def prepare_data(df_x, df_y, save = False):
 
     # Get unique gene IDs
     ids = df_x["Id"].unique()
@@ -42,6 +42,15 @@ def prepare_data(df_x, df_y):
 
     X_test = df_x[df_x["Id"].isin(id_test)]
     Y_test = df_y[df_y["Id"].isin(id_test)]
+    
+    if save:
+            X_train.to_csv("data/processed/X_train.csv", index = False)
+            Y_train.to_csv("data/processed/Y_train.csv", index = False)
+            X_val.to_csv("data/processed/X_val.csv", index = False)
+            Y_val.to_csv("data/processed/Y_val.csv", index = False)
+            X_test.to_csv("data/processed/X_test.csv", index = False)
+            Y_test.to_csv("data/processed/Y_test.csv", index = False)
+        
 
     # -------------------------
     # Remove Id
@@ -88,3 +97,13 @@ def prepare_data(df_x, df_y):
         X_train, X_val, X_test,
         Y_train, Y_val, Y_test
     )
+    
+    
+def main():
+
+    x, y = load_data()
+    prepare_data(x, y, save = True)
+    print("Preprocessing complete.")
+    
+if __name__ == "__main__":
+        main()
