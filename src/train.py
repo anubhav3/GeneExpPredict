@@ -1,122 +1,97 @@
+# Train and hypertune the CNN model with MLFlow
 from preprocess import load_data, prepare_data
 from model import create_model
 from sklearn.metrics import roc_auc_score
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
+import mlflow
+import mlflow.pytorch
+from itertools import product
 
 
-# Load data
+
+# SETTINGS
+
+learning_rates = [0.0001, 0.0003, 0.001]
+filters = [16, 32, 64] #Controls the nr. of features the CNN learns from the genomic sequence
+kernel_sizes = [3, 5, 7] #A convolutional kernel looks at neighbouring bins. How much local genomic context is useful.
+dense_sizes = [16, 32, 64] #Controls the size of the fully connected layer after the CNN.
+
+EPOCHS = 100 #Max number of passes through the training data.
+PATIENCE = 10 #For early stopping
+
+
+
+# LOAD DATA
 x, y = load_data()
-
 X_train, X_val, X_test, Y_train, Y_val, Y_test = prepare_data(x, y)
 
 
 
-# Create model
-model = create_model()
+# MLflow
+mlflow.set_experiment("gene-expression-cnn")
 
 
-# Loss Function and Optimizer
-loss_fn = nn.BCEWithLogitsLoss()
 
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=0.001
-)
+# HYPERPARAMETER SEARCH
+combinations = product(learning_rates, filters, kernel_sizes, dense_sizes)
 
+for lr, num_filters, kernel_size, dense_size in combinations:
 
-# Early stopping
-best_auc = 0
-patience = 10
-counter = 0
+    print("\n----------------------------------------")
+    print(f"LR: {lr} | Filters: {num_filters} | Kernel: {kernel_size} | Dense: {dense_size}")
+    print("----------------------------------------")
 
-# Store training history
-train_losses = []
-val_aucs = []
+    with mlflow.start_run():
 
+        mlflow.log_params({"learning_rate": lr, "filters": num_filters, "kernel_size": kernel_size, "dense_size": dense_size, "epochs": EPOCHS, "patience": PATIENCE})
 
-# Training
-for epoch in range(100):
+        model = create_model(filters=num_filters, kernel_size=kernel_size, dense_size=dense_size)
 
-    model.train()
+        loss_fn = nn.BCEWithLogitsLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    output = model(X_train).squeeze()
-
-    loss = loss_fn(output, Y_train)
-
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    # Validation
-    model.eval()
-
-    with torch.no_grad():
-
-        output = model(X_val).squeeze()
-
-        probability = torch.sigmoid(output)
-
-
-    val_auc = roc_auc_score(
-        Y_val.numpy(),
-        probability.numpy()
-    )
-
-
-    # Store results
-    train_losses.append(loss.item())
-    val_aucs.append(val_auc)
-
-
-    print(
-        f"Epoch {epoch + 1} | "
-        f"Loss: {loss.item():.4f} | "
-        f"Val AUC: {val_auc:.4f}"
-    )
-
-
-    # Early stopping
-    if val_auc > best_auc:
-
-        best_auc = val_auc
+        best_auc = 0
         counter = 0
 
-        torch.save(
-            model.state_dict(),
-            "models/best_model.pth"
-        )
+        for epoch in range(EPOCHS):
 
-        print("  → New best model saved!")
+            model.train()
 
-    else:
+            output = model(X_train).squeeze()
+            loss = loss_fn(output, Y_train)
 
-        counter += 1
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        print(
-            f"  → No improvement "
-            f"({counter}/{patience})"
-        )
+            model.eval()
 
+            with torch.no_grad():
+                output = model(X_val).squeeze()
+                probability = torch.sigmoid(output)
 
-    if counter >= patience:
+            val_auc = roc_auc_score(Y_val.numpy(), probability.numpy())
 
-        print("Early stopping!")
-        break
+            mlflow.log_metric("train_loss", loss.item(), step=epoch)
+            mlflow.log_metric("val_auc", val_auc, step=epoch)
 
-# Plot training history
-epochs = range(1, len(train_losses) + 1)
+            print(f"Epoch {epoch + 1} | Loss: {loss.item():.4f} | Val AUC: {val_auc:.4f}")
 
+            if val_auc > best_auc:
+                best_auc = val_auc
+                counter = 0
+            else:
+                counter += 1
 
-plt.figure(figsize=(10, 5))
-plt.plot(epochs, train_losses, label = "Training Loss")
-plt.plot(epochs, val_aucs, label="Validation AUC")
-plt.xlabel("Epoch")
-plt.ylabel("Value")
-plt.title("Training History")
-plt.legend()
-plt.savefig("results/figures/training_history.png", dpi=300, bbox_inches="tight")
+            if counter >= PATIENCE:
+                print("Early stopping.")
+                break
 
-print(f"Best validation AUC: {best_auc:.4f}")
-print("Training plot saved.")
+        mlflow.log_metric("best_val_auc", best_auc)
+        mlflow.log_metric("epochs_trained", epoch + 1)
+
+        mlflow.pytorch.log_model(model, name="model", input_example=X_train[:1], serialization_format="pickle")
+
+        print(f"Best Val AUC: {best_auc:.4f}")
+
