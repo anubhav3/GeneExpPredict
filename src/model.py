@@ -1,24 +1,15 @@
 import torch.nn as nn
 
-def create_model():
-    
+def create_model(filters=32, kernel_size=5, dense_size=32):
+
     model = nn.Sequential(
-        # Input: 5 x 100
-        nn.Conv1d(
-            in_channels = 5,
-            out_channels = 32,
-            kernel_size = 5,
-            padding = 2
-        ),
+        nn.Conv1d(in_channels=5, out_channels=filters, kernel_size=kernel_size, padding=kernel_size // 2),
         nn.ReLU(),
-        # 100 -> 50
-        nn.MaxPool1d(kernel_size = 2),
-        # 32 x 50 -> 1600
+        nn.MaxPool1d(kernel_size=2),
         nn.Flatten(),
-        # 1600 -> 32
-        nn.Linear(32*50, 32),
+        nn.LazyLinear(dense_size),
         nn.ReLU(),
-        nn.Linear(32, 1)    
+        nn.Linear(dense_size, 1)
     )
-    
+
     return model
