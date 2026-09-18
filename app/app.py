@@ -15,41 +15,37 @@ from sklearn.metrics import roc_auc_score, accuracy_score, roc_curve, confusion_
 from src.model import create_model
 
 
-# ============================================================
-# PAGE SETUP
-# ============================================================
 
+# PAGE SETUP
 st.set_page_config(page_title="Gene Expression Prediction", page_icon="🧬", layout="wide")
 
 st.title("🧬 Gene Expression Prediction")
-st.caption("CNN-based prediction of high and low gene expression from histone modification signals")
+st.caption("Predicting gene expression from histone modification signals using CNN")
 
+with st.expander("About this project"):
+    st.markdown("""
+    This project uses a 1D convolutional neural network (CNN) to predict whether a gene has high or low expression based on five histone modification signals measured across 100 genomic bins around the transcription start site (TSS).
+    
+    The model learns local patterns across genomic positions while treating the five histone modifications as input channels. The dashboard evaluates the trained model on a held-out test set and provides interactive exploration of individual gene predictions and their histone modification profiles.
+    """)
+    
 
-# ============================================================
 # LOAD DATA
-# ============================================================
-
 X_test = pd.read_csv("data/processed/X_test.csv")
 Y_test = pd.read_csv("data/processed/Y_test.csv")
 
 
-# ============================================================
+
 # LOAD MODEL
-# ============================================================
-
-model = create_model()
-
-model.load_state_dict(
-    torch.load("models/best_model.pth", map_location="cpu")
-)
-
+checkpoint = torch.load("models/best_model.pth", map_location = "cpu")
+model_params = checkpoint["model_hyperparameters"]
+model = create_model(**model_params)
+model.load_state_dict(checkpoint["model_state_dict"])
 model.eval()
 
 
-# ============================================================
-# HISTONE COLUMNS
-# ============================================================
 
+# HISTONE COLUMNS
 histone_columns = [
     "H3K4me3",
     "H3K4me1",
@@ -59,10 +55,8 @@ histone_columns = [
 ]
 
 
-# ============================================================
-# PREPARE TEST DATA
-# ============================================================
 
+# PREPARE TEST DATA
 gene_ids = X_test["Id"].unique()
 number_of_genes = len(gene_ids)
 
@@ -77,10 +71,8 @@ X = X.transpose(0, 2, 1)
 X = torch.tensor(X, dtype=torch.float32)
 
 
-# ============================================================
-# MAKE PREDICTIONS
-# ============================================================
 
+# MAKE PREDICTIONS
 with torch.no_grad():
     outputs = model(X)
     probabilities = torch.sigmoid(outputs).squeeze().numpy()
@@ -88,18 +80,16 @@ with torch.no_grad():
 predicted_labels = (probabilities >= 0.5).astype(int)
 
 
-# ============================================================
+
 # GET TRUE LABELS
-# ============================================================
+
 
 Y_test_sorted = Y_test.set_index("Id").loc[gene_ids]
 true_labels = Y_test_sorted["Prediction"].values
 
 
-# ============================================================
-# CALCULATE METRICS
-# ============================================================
 
+# CALCULATE METRICS
 test_auc = roc_auc_score(true_labels, probabilities)
 test_accuracy = accuracy_score(true_labels, predicted_labels)
 
@@ -107,10 +97,8 @@ number_correct = (predicted_labels == true_labels).sum()
 number_incorrect = (predicted_labels != true_labels).sum()
 
 
-# ============================================================
-# OVERALL TEST SET PERFORMANCE
-# ============================================================
 
+# OVERALL TEST SET PERFORMANCE
 st.header("Overall Test Set Performance")
 
 col1, col2, col3, col4 = st.columns(4)
@@ -128,17 +116,12 @@ with col4:
     st.metric("Test Genes", number_of_genes)
 
 
-# ============================================================
-# ROC CURVE + PROBABILITY DISTRIBUTION
-# ============================================================
 
+# ROC CURVE + PROBABILITY DISTRIBUTION
 col1, col2 = st.columns(2)
 
 
-# ------------------------------------------------------------
 # ROC CURVE
-# ------------------------------------------------------------
-
 with col1:
 
     st.subheader("ROC Curve")
@@ -162,10 +145,7 @@ with col1:
     plt.close(fig)
 
 
-# ------------------------------------------------------------
 # PROBABILITY DISTRIBUTION
-# ------------------------------------------------------------
-
 with col2:
 
     st.subheader("Prediction Probability")
@@ -188,9 +168,6 @@ with col2:
     plt.close(fig)
 
 
-# ============================================================
-# CONFUSION MATRIX
-# ============================================================
 
 st.subheader("Confusion Matrix")
 
@@ -223,10 +200,8 @@ with center:
     plt.close(fig)
 
 
-# ============================================================
-# ALL TEST GENE PREDICTIONS
-# ============================================================
 
+# ALL TEST GENE PREDICTIONS
 st.header("All Test Gene Predictions")
 
 prediction_table = pd.DataFrame({
@@ -240,10 +215,8 @@ prediction_table = pd.DataFrame({
 st.dataframe(prediction_table, use_container_width=True, hide_index=True)
 
 
-# ============================================================
-# DOWNLOAD PREDICTIONS
-# ============================================================
 
+# DOWNLOAD PREDICTIONS
 csv = prediction_table.to_csv(index=False)
 
 st.download_button(
@@ -254,10 +227,8 @@ st.download_button(
 )
 
 
-# ============================================================
-# INDIVIDUAL GENE ANALYSIS
-# ============================================================
 
+# INDIVIDUAL GENE ANALYSIS
 st.header("Individual Gene Analysis")
 
 selected_gene = st.selectbox("Select Gene ID", sorted(gene_ids))
@@ -275,10 +246,8 @@ gene_observed_value = true_labels[gene_index]
 gene_observed = "HIGH" if gene_observed_value == 1 else "LOW"
 
 
-# ============================================================
-# INDIVIDUAL GENE SUMMARY
-# ============================================================
 
+# INDIVIDUAL GENE SUMMARY
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -297,10 +266,8 @@ else:
     st.error("✗ Prediction is incorrect")
 
 
-# ============================================================
-# HISTONE MODIFICATION SIGNALS
-# ============================================================
 
+# HISTONE MODIFICATION SIGNALS
 st.subheader("Histone Modification Signals")
 
 
